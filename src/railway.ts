@@ -1,24 +1,53 @@
-import { createHash } from "node:crypto";
-
 const MAX_SHORT_TEXT = 160;
 const MAX_LONG_TEXT = 800;
 
 export class InvalidRailwayEventError extends Error {
-  constructor(message) {
+  constructor(message: string) {
     super(message);
     this.name = "InvalidRailwayEventError";
   }
 }
 
-function isRecord(value) {
+interface ResourceIdentity {
+  readonly id?: string;
+  readonly name?: string;
+}
+
+interface RailwayDetails {
+  readonly branch?: string;
+  readonly commitAuthor?: string;
+  readonly commitHash?: string;
+  readonly commitMessage?: string;
+  readonly message?: string;
+  readonly metric?: string;
+  readonly source?: string;
+  readonly status?: string;
+  readonly threshold?: string;
+  readonly unit?: string;
+  readonly value?: string;
+}
+
+export interface RailwayEvent {
+  readonly deployment: ResourceIdentity;
+  readonly details: RailwayDetails;
+  readonly environment: ResourceIdentity;
+  readonly externalId?: string;
+  readonly project: ResourceIdentity;
+  readonly service: ResourceIdentity;
+  readonly severity: string;
+  readonly timestamp: string;
+  readonly type: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function optionalRecord(value) {
+function optionalRecord(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
 
-function optionalString(value, maximumLength = MAX_SHORT_TEXT) {
+function optionalString(value: unknown, maximumLength = MAX_SHORT_TEXT): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
@@ -26,21 +55,25 @@ function optionalString(value, maximumLength = MAX_SHORT_TEXT) {
   const normalized = value
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     .trim();
-  if (!normalized) {
-    return undefined;
-  }
-  return normalized.slice(0, maximumLength);
+  return normalized ? normalized.slice(0, maximumLength) : undefined;
 }
 
-function resourceIdentity(resource, key) {
+function optionalDetail(value: unknown, maximumLength = MAX_SHORT_TEXT): string | undefined {
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value).slice(0, maximumLength);
+  }
+  return optionalString(value, maximumLength);
+}
+
+function resourceIdentity(resource: Record<string, unknown>, key: string): ResourceIdentity {
   const entry = optionalRecord(resource[key]);
-  return {
+  return Object.freeze({
     id: optionalString(entry.id),
     name: optionalString(entry.name),
-  };
+  });
 }
 
-export function parseRailwayEvent(payload) {
+export function parseRailwayEvent(payload: unknown): RailwayEvent {
   if (!isRecord(payload)) {
     throw new InvalidRailwayEventError("Webhook payload must be a JSON object");
   }
@@ -61,49 +94,37 @@ export function parseRailwayEvent(payload) {
   const environment = resourceIdentity(resource, "environment");
   const service = resourceIdentity(resource, "service");
   const deployment = resourceIdentity(resource, "deployment");
-  const detailId = optionalString(details.id);
-
-  const fingerprintSource = [
-    type,
-    timestamp,
-    detailId,
-    deployment.id,
-    project.id,
-    environment.id,
-    service.id,
-  ].filter(Boolean).join("\u0000");
 
   return Object.freeze({
-    key: createHash("sha256").update(fingerprintSource).digest("hex"),
-    externalId: detailId ?? deployment.id,
-    type,
-    timestamp: new Date(timestamp).toISOString(),
-    severity: optionalString(payload.severity)?.toUpperCase() ?? "INFO",
-    project,
-    environment,
-    service,
     deployment,
     details: Object.freeze({
-      source: optionalString(details.source),
-      status: optionalString(details.status),
       branch: optionalString(details.branch),
-      commitHash: optionalString(details.commitHash),
       commitAuthor: optionalString(details.commitAuthor),
+      commitHash: optionalString(details.commitHash),
       commitMessage: optionalString(details.commitMessage, MAX_LONG_TEXT),
-      metric: optionalString(details.metric),
-      threshold: optionalString(details.threshold),
-      value: optionalString(details.value),
-      unit: optionalString(details.unit),
       message: optionalString(details.message, MAX_LONG_TEXT),
+      metric: optionalDetail(details.metric),
+      source: optionalString(details.source),
+      status: optionalDetail(details.status),
+      threshold: optionalDetail(details.threshold),
+      unit: optionalDetail(details.unit),
+      value: optionalDetail(details.value),
     }),
+    environment,
+    externalId: optionalString(details.id) ?? deployment.id,
+    project,
+    service,
+    severity: optionalString(payload.severity)?.toUpperCase() ?? "INFO",
+    timestamp: new Date(timestamp).toISOString(),
+    type,
   });
 }
 
-function display(value) {
+function display(value: string | undefined): string {
   return value ?? "Not provided";
 }
 
-function headerTemplate(event) {
+function headerTemplate(event: RailwayEvent): string {
   const type = event.type.toLowerCase();
   if (event.severity === "ERROR" || event.severity === "CRITICAL" || /(failed|crashed)/.test(type)) {
     return "red";
@@ -117,7 +138,7 @@ function headerTemplate(event) {
   return "blue";
 }
 
-function field(label, value) {
+function field(label: string, value: string | undefined): Record<string, unknown> {
   return {
     is_short: true,
     text: {
@@ -127,8 +148,8 @@ function field(label, value) {
   };
 }
 
-function detailLines(details) {
-  const entries = [
+function detailLines(details: RailwayDetails): string {
+  const entries: Array<readonly [string, string | undefined]> = [
     ["Status", details.status],
     ["Source", details.source],
     ["Branch", details.branch],
@@ -138,13 +159,16 @@ function detailLines(details) {
     ["Threshold", details.threshold],
     ["Observed value", [details.value, details.unit].filter(Boolean).join(" ") || undefined],
     ["Message", details.message ?? details.commitMessage],
-  ].filter(([, value]) => value);
+  ];
 
-  return entries.map(([label, value]) => `${label}: ${value}`).join("\n");
+  return entries
+    .filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+    .map(([label, value]) => `${label}: ${value}`)
+    .join("\n");
 }
 
-export function toLarkMessage(event) {
-  const elements = [
+export function toLarkMessage(event: RailwayEvent): Record<string, unknown> {
+  const elements: Array<Record<string, unknown>> = [
     {
       tag: "div",
       fields: [

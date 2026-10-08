@@ -2,7 +2,7 @@
 
 Convert Railway deployment and resource alert webhooks into readable Lark or Feishu message cards.
 
-The service has no runtime dependencies, stores no events, and never exposes the Lark bot URL to callers. It validates every incoming request with a shared secret header and can restrict events by Railway project, environment, and event type.
+The converter runs as a small Cloudflare Worker. It stores no events, has no runtime package dependencies, and never exposes the Lark bot URL to callers. It validates every incoming request with a shared secret header and can restrict events by Railway project, environment, and event type.
 
 ## What it handles
 
@@ -10,31 +10,43 @@ The service has no runtime dependencies, stores no events, and never exposes the
 - CPU and RAM monitor alerts
 - Volume usage alerts
 - Lark and Feishu custom bot webhooks
-- Short-term retry deduplication within one running instance
 
-Railway webhook delivery is best-effort and unordered. This converter returns an error when Lark rejects a message so Railway can retry, but it is not a durable incident queue.
+Railway webhook delivery is best-effort and unordered. This converter waits for Lark and returns an error when Lark rejects a message so Railway can retry. Retries can produce duplicate Lark messages because the Worker intentionally has no state or durable incident queue.
 
-## Deploy on Railway
+## Deploy on Cloudflare Workers
 
-1. Create a Railway service from this GitHub repository.
-2. Add these service variables:
+1. Install the development dependencies and authenticate Wrangler:
 
-   ```text
-   LARK_WEBHOOK_URL=<your Lark or Feishu custom bot webhook URL>
-   WEBHOOK_SECRET=<at least 32 random characters>
+   ```bash
+   npm ci
+   npx wrangler login
    ```
 
-3. Generate a public domain for the service. Railway uses `/healthz` as its deployment health check.
-4. In the project you want to monitor, open **Settings → Webhooks** and add:
+2. Store the two secrets. Wrangler prompts for each value without putting it in source control:
+
+   ```bash
+   npx wrangler secret put LARK_WEBHOOK_URL
+   npx wrangler secret put WEBHOOK_SECRET
+   ```
+
+   `WEBHOOK_SECRET` must contain at least 32 bytes. A random 32-byte hex value is a good choice.
+
+3. Deploy the Worker:
+
+   ```bash
+   npm run deploy
+   ```
+
+4. In the Railway project you want to monitor, open **Settings → Webhooks** and add:
 
    ```text
-   URL: https://<converter-domain>/webhooks/railway
+   URL: https://railway-lark-webhook.<your-subdomain>.workers.dev/webhooks/railway
    Header: X-Webhook-Secret: <the same WEBHOOK_SECRET>
    ```
 
 5. Select the Railway events you want and use **Test Webhook**. Trigger a real deployment event afterward to confirm the complete production path.
 
-Keep the converter in a separate Railway project from the services it monitors so one project-level outage does not disable its own alerts.
+Hosting the converter outside Railway lets it continue receiving alerts during a Railway project-level incident.
 
 ## Configuration
 
@@ -46,20 +58,23 @@ Keep the converter in a separate Railway project from the services it monitors s
 | `TRUSTED_ENVIRONMENT_IDS` | No | All | Comma-separated Railway environment IDs |
 | `EVENT_TYPES` | No | All | Comma-separated exact event types, such as `Deployment.failed` |
 | `LARK_TIMEOUT_MS` | No | `5000` | Lark request timeout |
-| `DEDUPLICATION_TTL_MS` | No | `600000` | In-memory duplicate suppression period |
 | `BODY_LIMIT_BYTES` | No | `65536` | Maximum accepted request body |
-| `PORT` | No | `3000` | HTTP listener; Railway injects this automatically |
 
-Optional allowlists are additional protection. If a configured event lacks the corresponding ID, it is rejected rather than silently accepted.
+The optional non-secret values are declared in `wrangler.jsonc`. Allowlists are additional protection: if a configured event lacks the corresponding ID, it is rejected rather than silently accepted.
 
 ## Run locally
 
 Node.js 22 or newer is required.
 
+Create an ignored `.dev.vars` file from `.env.example`, fill in local-only values, and start Wrangler:
+
+```text
+LARK_WEBHOOK_URL=https://open.larksuite.com/open-apis/bot/v2/hook/...
+WEBHOOK_SECRET=<at least 32 random characters>
+```
+
 ```bash
-export LARK_WEBHOOK_URL='https://open.larksuite.com/open-apis/bot/v2/hook/...'
-export WEBHOOK_SECRET="$(openssl rand -hex 32)"
-npm start
+npm run dev
 ```
 
 Verify the public health endpoint:
@@ -83,11 +98,11 @@ npm test
 npm run check
 ```
 
-Tests cover configuration validation, Railway payload parsing, card conversion, authentication, allowlists, delivery failure behavior, and retry deduplication.
+Tests run in the Workers runtime and cover configuration validation, Railway payload parsing, card conversion, authentication, allowlists, size limits, and delivery failure behavior.
 
 ## Security
 
-- Put `LARK_WEBHOOK_URL` and `WEBHOOK_SECRET` in Railway service variables, never in source control.
+- Put `LARK_WEBHOOK_URL` and `WEBHOOK_SECRET` in Cloudflare Worker secrets, never in source control.
 - Configure Railway's custom webhook header instead of putting a secret in the URL, because URLs commonly appear in access logs.
 - Rotate a Lark or Feishu bot webhook after accidental disclosure.
 - Logs contain event routing IDs and types, not full payloads, bot URLs, or shared secrets.

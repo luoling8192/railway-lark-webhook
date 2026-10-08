@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "railway-lark-webhook",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": true,
+  "preview_urls": false,
+  "secrets": {
+    "required": [
+      "LARK_WEBHOOK_URL",
+      "WEBHOOK_SECRET"
+    ]
+  },
+  "vars": {
+    "BODY_LIMIT_BYTES": "65536",
+    "EVENT_TYPES": "",
+    "LARK_TIMEOUT_MS": "5000",
+    "TRUSTED_ENVIRONMENT_IDS": "",
+    "TRUSTED_PROJECT_IDS": ""
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  }
+}
