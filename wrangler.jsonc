@@ -16,6 +16,7 @@
     ]
   },
   "vars": {
+    "CARD_LOCALE": "zh-CN",
     "BODY_LIMIT_BYTES": "65536",
     "EVENT_TYPES": "",
     "LARK_TIMEOUT_MS": "5000",

@@ -1,3 +1,5 @@
+import type { CardLocale } from "./i18n";
+
 const DEFAULT_BODY_LIMIT_BYTES = 64 * 1024;
 const DEFAULT_LARK_TIMEOUT_MS = 5_000;
 
@@ -9,6 +11,7 @@ export class InvalidConfigurationError extends Error {
 }
 
 export interface Config {
+  readonly cardLocale: CardLocale;
   readonly bodyLimitBytes: number;
   readonly eventTypes: ReadonlySet<string>;
   readonly larkTimeoutMs: number;
@@ -19,6 +22,7 @@ export interface Config {
 }
 
 export interface RuntimeEnv {
+  readonly CARD_LOCALE?: string;
   readonly BODY_LIMIT_BYTES?: string;
   readonly EVENT_TYPES?: string;
   readonly LARK_TIMEOUT_MS?: string;
@@ -88,12 +92,17 @@ function larkWebhookUrl(value: string | undefined): string {
 }
 
 export function loadConfig(env: RuntimeEnv): Config {
+  const cardLocale = env.CARD_LOCALE?.trim() || "en";
+  if (cardLocale !== "en" && cardLocale !== "zh-CN") {
+    throw new InvalidConfigurationError("CARD_LOCALE must be en or zh-CN");
+  }
   const webhookSecret = required(env.WEBHOOK_SECRET, "WEBHOOK_SECRET");
   if (new TextEncoder().encode(webhookSecret).byteLength < 32) {
     throw new InvalidConfigurationError("WEBHOOK_SECRET must be at least 32 bytes");
   }
 
   return Object.freeze({
+    cardLocale,
     bodyLimitBytes: positiveInteger(env.BODY_LIMIT_BYTES, "BODY_LIMIT_BYTES", DEFAULT_BODY_LIMIT_BYTES),
     eventTypes: commaSeparatedSet(env.EVENT_TYPES),
     larkTimeoutMs: positiveInteger(env.LARK_TIMEOUT_MS, "LARK_TIMEOUT_MS", DEFAULT_LARK_TIMEOUT_MS),

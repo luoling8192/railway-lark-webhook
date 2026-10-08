@@ -54,6 +54,7 @@ Hosting the converter outside Railway lets it continue receiving alerts during a
 | --- | --- | --- | --- |
 | `LARK_WEBHOOK_URL` | Yes | — | Official Lark or Feishu custom bot URL |
 | `WEBHOOK_SECRET` | Yes | — | Incoming `X-Webhook-Secret` or Bearer value; minimum 32 bytes |
+| `CARD_LOCALE` | No | `en` | Card language: `en` or `zh-CN`; the included Wrangler configuration selects Chinese |
 | `TRUSTED_PROJECT_IDS` | No | All | Comma-separated Railway project IDs |
 | `TRUSTED_ENVIRONMENT_IDS` | No | All | Comma-separated Railway environment IDs |
 | `EVENT_TYPES` | No | All | Comma-separated exact event types, such as `Deployment.failed` |
@@ -61,6 +62,8 @@ Hosting the converter outside Railway lets it continue receiving alerts during a
 | `BODY_LIMIT_BYTES` | No | `65536` | Maximum accepted request body |
 
 The optional non-secret values are declared in `wrangler.jsonc`. Allowlists are additional protection: if a configured event lacks the corresponding ID, it is rejected rather than silently accepted.
+
+Cards use a single-column layout: a translated event title, a bold project/environment/service path, optional details, and a small UTC timestamp. Resource names and upstream messages retain their original text. Unknown event types remain readable in English rather than being assigned an incorrect translation. Resolved events use a green header.
 
 ## Run locally
 

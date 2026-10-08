@@ -77,6 +77,18 @@ describe("Worker request handler", () => {
     expect(deliver).not.toHaveBeenCalled();
   });
 
+  it("uses the configured locale on the authenticated delivery path", async () => {
+    const deliver = vi.fn(async (_message: unknown) => undefined);
+    const handle = createRequestHandler({ deliver, logger: silentLogger });
+    const response = await handle(request(), env({ CARD_LOCALE: "zh-CN" }));
+    expect(response.status).toBe(200);
+    expect(deliver).toHaveBeenCalledWith(expect.objectContaining({
+      card: expect.objectContaining({
+        header: expect.objectContaining({ title: { tag: "plain_text", content: "Railway · 部署失败" } }),
+      }),
+    }), expect.any(Object));
+  });
+
   it("rejects a valid event from an untrusted project", async () => {
     const deliver = vi.fn(async () => undefined);
     const handle = createRequestHandler({ deliver });

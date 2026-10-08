@@ -25,6 +25,7 @@ describe("loadConfig", () => {
 
     expect(config.bodyLimitBytes).toBe(65_536);
     expect(config.larkTimeoutMs).toBe(5_000);
+    expect(config.cardLocale).toBe("en");
     expect([...config.trustedProjectIds]).toEqual(["project-a", "project-b"]);
     expect([...config.eventTypes]).toEqual(["Deployment.failed", "Deployment.crashed"]);
   });
@@ -36,5 +37,10 @@ describe("loadConfig", () => {
 
   it("rejects short inbound secrets", () => {
     expect(() => loadConfig(env({ WEBHOOK_SECRET: "short" }))).toThrow(/at least 32 bytes/);
+  });
+
+  it("selects Chinese and rejects unsupported languages", () => {
+    expect(loadConfig(env({ CARD_LOCALE: "zh-CN" })).cardLocale).toBe("zh-CN");
+    expect(() => loadConfig(env({ CARD_LOCALE: "fr" }))).toThrow(/CARD_LOCALE/);
   });
 });
