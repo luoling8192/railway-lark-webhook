@@ -1,5 +1,20 @@
 const MAX_SHORT_TEXT = 160;
 const MAX_LONG_TEXT = 800;
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+const DISPLAY_ACRONYMS = new Set(["CPU", "OOM", "RAM"]);
 
 export class InvalidRailwayEventError extends Error {
   constructor(message: string) {
@@ -120,10 +135,6 @@ export function parseRailwayEvent(payload: unknown): RailwayEvent {
   });
 }
 
-function display(value: string | undefined): string {
-  return value ?? "Not provided";
-}
-
 function headerTemplate(event: RailwayEvent): string {
   const type = event.type.toLowerCase();
   if (event.severity === "ERROR" || event.severity === "CRITICAL" || /(failed|crashed)/.test(type)) {
@@ -138,12 +149,43 @@ function headerTemplate(event: RailwayEvent): string {
   return "blue";
 }
 
-function field(label: string, value: string | undefined): Record<string, unknown> {
+function humanizeEventType(eventType: string): string {
+  const words = eventType
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[._-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((word) => {
+      const upper = word.toUpperCase();
+      return DISPLAY_ACRONYMS.has(upper) ? upper : word.toLowerCase();
+    });
+
+  const phrase = words.join(" ");
+  return `${phrase[0]?.toUpperCase()}${phrase.slice(1)}`;
+}
+
+function formatTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  const month = MONTH_NAMES[date.getUTCMonth()];
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}, ${hours}:${minutes} UTC`;
+}
+
+function escapeLarkMarkdown(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/([*_~`\[\]<>])/g, "\\$1")
+    .replace(/\s+/g, " ");
+}
+
+function field(label: string, value: string): Record<string, unknown> {
   return {
     is_short: true,
     text: {
-      tag: "plain_text",
-      content: `${label}\n${display(value)}`,
+      tag: "lark_md",
+      content: `${label}\n**${escapeLarkMarkdown(value)}**`,
     },
   };
 }
@@ -168,17 +210,20 @@ function detailLines(details: RailwayDetails): string {
 }
 
 export function toLarkMessage(event: RailwayEvent): Record<string, unknown> {
+  const summaryFields: Array<readonly [string, string | undefined]> = [
+    ["Project", event.project.name],
+    ["Environment", event.environment.name],
+    ["Service", event.service.name],
+    ["Severity", event.severity],
+    ["Occurred", formatTimestamp(event.timestamp)],
+    ["Event ID", event.externalId],
+  ];
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "div",
-      fields: [
-        field("Project", event.project.name),
-        field("Environment", event.environment.name),
-        field("Service", event.service.name),
-        field("Severity", event.severity),
-        field("Occurred at", event.timestamp),
-        field("Event ID", event.externalId),
-      ],
+      fields: summaryFields
+        .filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+        .map(([label, value]) => field(label, value)),
     },
   ];
 
@@ -204,7 +249,7 @@ export function toLarkMessage(event: RailwayEvent): Record<string, unknown> {
         template: headerTemplate(event),
         title: {
           tag: "plain_text",
-          content: `Railway · ${event.type}`,
+          content: `Railway · ${humanizeEventType(event.type)}`,
         },
       },
       elements,

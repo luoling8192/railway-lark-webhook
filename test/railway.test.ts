@@ -53,9 +53,45 @@ describe("Railway event conversion", () => {
 
     expect(message.msg_type).toBe("interactive");
     expect(message.card.header.template).toBe("red");
-    expect(message.card.header.title.content).toBe("Railway · Deployment.failed");
-    expect(message.card.elements[0]?.fields?.[0]?.text.content).toBe("Project\nexample");
+    expect(message.card.header.title.content).toBe("Railway · Deployment failed");
+    expect(message.card.elements[0]?.fields?.map(({ text }) => text.content)).toEqual([
+      "Project\n**example**",
+      "Environment\n**production**",
+      "Service\n**api**",
+      "Severity\n**WARNING**",
+      "Occurred\n**8 Oct 2026, 10:30 UTC**",
+      "Event ID\n**event-123**",
+    ]);
     expect(message.card.elements[2]?.text?.content).toMatch(/Commit: abcdef012345/);
+  });
+
+  it("omits missing resource fields from compact alert cards", () => {
+    const message = toLarkMessage(parseRailwayEvent({
+      type: "VolumeAlert.triggered",
+      details: {},
+      resource: {
+        project: { id: "project-1", name: "subrelay" },
+        environment: { id: "environment-1", name: "production" },
+      },
+      severity: "INFO",
+      timestamp: "2026-10-08T12:20:52.677Z",
+    })) as {
+      card: {
+        elements: Array<{ fields?: Array<{ text: { content: string } }> }>;
+        header: { template: string; title: { content: string } };
+      };
+    };
+
+    expect(message.card.header.template).toBe("orange");
+    expect(message.card.header.title.content).toBe("Railway · Volume alert triggered");
+    expect(message.card.elements).toHaveLength(1);
+    expect(message.card.elements[0]?.fields?.map(({ text }) => text.content)).toEqual([
+      "Project\n**subrelay**",
+      "Environment\n**production**",
+      "Severity\n**INFO**",
+      "Occurred\n**8 Oct 2026, 12:20 UTC**",
+    ]);
+    expect(JSON.stringify(message)).not.toContain("Not provided");
   });
 
   it("rejects payloads without an event type", () => {
