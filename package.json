@@ -1,0 +1,27 @@
+{
+  "name": "railway-lark-webhook",
+  "version": "1.0.0",
+  "description": "Convert Railway deployment and resource alert webhooks into Lark or Feishu message cards.",
+  "type": "module",
+  "private": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "check": "node --check src/config.js && node --check src/lark.js && node --check src/railway.js && node --check src/server.js && node --check src/index.js && node --check scripts/send-sample.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/groupultra/railway-lark-webhook.git"
+  },
+  "keywords": [
+    "railway",
+    "lark",
+    "feishu",
+    "webhook",
+    "alerts"
+  ],
+  "license": "MIT"
+}
