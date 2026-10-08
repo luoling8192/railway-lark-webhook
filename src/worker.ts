@@ -156,7 +156,7 @@ export function createRequestHandler({
     }
 
     try {
-      const message = toLarkMessage(event);
+      const message = toLarkMessage(event, config.cardLocale);
       if (deliver) {
         await deliver(message, env);
       } else {

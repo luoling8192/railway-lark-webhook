@@ -1,3 +1,5 @@
+import { cardTranslations, translatedEvent, type CardLocale } from "./i18n";
+
 const MAX_SHORT_TEXT = 160;
 const MAX_LONG_TEXT = 800;
 const MONTH_NAMES = [
@@ -160,14 +162,14 @@ export function parseRailwayEvent(payload: unknown): RailwayEvent {
 
 function headerTemplate(event: RailwayEvent): string {
   const type = event.type.toLowerCase();
-  if (event.severity === "ERROR" || event.severity === "CRITICAL" || /(failed|crashed)/.test(type)) {
-    return "red";
-  }
-  if (event.severity === "WARNING" || /(warning|alert)/.test(type)) {
-    return "orange";
-  }
   if (/(success|succeeded|healthy|resolved)/.test(type)) {
     return "green";
+  }
+  if (event.severity === "ERROR" || event.severity === "CRITICAL" || /(failed|crashed|oomkilled)/.test(type)) {
+    return "red";
+  }
+  if (event.severity === "WARNING" || /(warning|alert|triggered)/.test(type)) {
+    return "orange";
   }
   return "blue";
 }
@@ -188,12 +190,14 @@ function humanizeEventType(eventType: string): string {
   return `${phrase[0]?.toUpperCase()}${phrase.slice(1)}`;
 }
 
-function formatTimestamp(timestamp: string): string {
+function formatTimestamp(timestamp: string, locale: CardLocale): string {
   const date = new Date(timestamp);
   const month = MONTH_NAMES[date.getUTCMonth()];
   const hours = String(date.getUTCHours()).padStart(2, "0");
   const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-  return `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}, ${hours}:${minutes} UTC`;
+  return locale === "zh-CN"
+    ? `${date.getUTCFullYear()}年${date.getUTCMonth() + 1}月${date.getUTCDate()}日 · ${hours}:${minutes} UTC`
+    : `${date.getUTCDate()} ${month} ${date.getUTCFullYear()} · ${hours}:${minutes} UTC`;
 }
 
 function escapeLarkMarkdown(value: string): string {
@@ -202,27 +206,18 @@ function escapeLarkMarkdown(value: string): string {
     .join("");
 }
 
-function field(label: string, value: string): Record<string, unknown> {
-  return {
-    is_short: true,
-    text: {
-      tag: "lark_md",
-      content: `${label}\n**${escapeLarkMarkdown(value)}**`,
-    },
-  };
-}
-
-function detailLines(details: RailwayDetails): string {
+function detailLines(details: RailwayDetails, locale: CardLocale): string {
+  const labels = cardTranslations(locale);
   const entries: Array<readonly [string, string | undefined]> = [
-    ["Status", details.status],
-    ["Source", details.source],
-    ["Branch", details.branch],
-    ["Commit", details.commitHash?.slice(0, 12)],
-    ["Author", details.commitAuthor],
-    ["Metric", details.metric],
-    ["Threshold", details.threshold],
-    ["Observed value", [details.value, details.unit].filter(Boolean).join(" ") || undefined],
-    ["Message", details.message ?? details.commitMessage],
+    [labels.metric, details.metric],
+    [labels.value, details.value === undefined ? undefined : [details.value, details.unit].filter(Boolean).join(" ")],
+    [labels.threshold, details.threshold],
+    [labels.status, details.status],
+    [labels.source, details.source],
+    [labels.branch, details.branch],
+    [labels.commit, details.commitHash?.slice(0, 12)],
+    [labels.author, details.commitAuthor],
+    [labels.message, details.message ?? details.commitMessage],
   ];
 
   return entries
@@ -231,28 +226,25 @@ function detailLines(details: RailwayDetails): string {
     .join("\n");
 }
 
-export function toLarkMessage(event: RailwayEvent): Record<string, unknown> {
-  const summaryFields: Array<readonly [string, string | undefined]> = [
-    ["Project", event.project.name],
-    ["Environment", event.environment.name],
-    ["Service", event.service.name],
-    ["Severity", event.severity],
-    ["Occurred", formatTimestamp(event.timestamp)],
-    ["Event ID", event.externalId],
-  ];
-  const elements: Array<Record<string, unknown>> = [
-    {
+export function toLarkMessage(event: RailwayEvent, locale: CardLocale = "en") {
+  const title = translatedEvent(event.type, locale) ?? humanizeEventType(event.type);
+  const path = [event.project.name, event.environment.name, event.service.name]
+    .filter((name): name is string => Boolean(name)).map(escapeLarkMarkdown).join(" / ");
+  const elements: Array<{
+    tag: "div" | "note";
+    text?: { tag: "lark_md" | "plain_text"; content: string };
+    elements?: Array<{ tag: "plain_text"; content: string }>;
+  }> = [];
+  if (path) {
+    elements.push({
       tag: "div",
-      fields: summaryFields
-        .filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
-        .map(([label, value]) => field(label, value)),
-    },
-  ];
+      text: { tag: "lark_md", content: `**${path}**` },
+    });
+  }
 
-  const details = detailLines(event.details);
+  const details = detailLines(event.details, locale);
   if (details) {
     elements.push(
-      { tag: "hr" },
       {
         tag: "div",
         text: {
@@ -262,6 +254,11 @@ export function toLarkMessage(event: RailwayEvent): Record<string, unknown> {
       },
     );
   }
+  const footer = [formatTimestamp(event.timestamp, locale)];
+  if (event.externalId) {
+    footer.push(`${cardTranslations(locale).eventId}: ${event.externalId}`);
+  }
+  elements.push({ tag: "note", elements: [{ tag: "plain_text", content: footer.join("\n") }] });
 
   return {
     msg_type: "interactive",
@@ -271,7 +268,7 @@ export function toLarkMessage(event: RailwayEvent): Record<string, unknown> {
         template: headerTemplate(event),
         title: {
           tag: "plain_text",
-          content: `Railway · ${humanizeEventType(event.type)}`,
+          content: `Railway · ${title}`,
         },
       },
       elements,
