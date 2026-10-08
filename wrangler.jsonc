@@ -8,6 +8,7 @@
   ],
   "workers_dev": true,
   "preview_urls": false,
+  "previews": {},
   "secrets": {
     "required": [
       "LARK_WEBHOOK_URL",
