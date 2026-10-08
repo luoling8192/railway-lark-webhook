@@ -59,8 +59,8 @@ describe("Railway event conversion", () => {
       "Environment\n**production**",
       "Service\n**api**",
       "Severity\n**WARNING**",
-      "Occurred\n**8 Oct 2026, 10:30 UTC**",
-      "Event ID\n**event-123**",
+      "Occurred\n**8 Oct 2026, 10&#58;30 UTC**",
+      "Event ID\n**event&#45;123**",
     ]);
     expect(message.card.elements[2]?.text?.content).toMatch(/Commit: abcdef012345/);
   });
@@ -89,9 +89,25 @@ describe("Railway event conversion", () => {
       "Project\n**subrelay**",
       "Environment\n**production**",
       "Severity\n**INFO**",
-      "Occurred\n**8 Oct 2026, 12:20 UTC**",
+      "Occurred\n**8 Oct 2026, 12&#58;20 UTC**",
     ]);
     expect(JSON.stringify(message)).not.toContain("Not provided");
+  });
+
+  it("escapes dynamic field values using Lark-compatible HTML entities", () => {
+    const message = toLarkMessage(parseRailwayEvent({
+      ...PAYLOAD,
+      resource: {
+        ...PAYLOAD.resource,
+        project: { id: "project-1", name: "api_v2 *core* <prod> & &#42;" },
+      },
+    })) as {
+      card: { elements: Array<{ fields?: Array<{ text: { content: string } }> }> };
+    };
+
+    expect(message.card.elements[0]?.fields?.[0]?.text.content).toBe(
+      "Project\n**api&#95;v2 &#42;core&#42; &#60;prod&#62; &#38; &#38;&#35;42;**",
+    );
   });
 
   it("rejects payloads without an event type", () => {

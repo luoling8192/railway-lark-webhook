@@ -15,6 +15,29 @@ const MONTH_NAMES = [
   "Dec",
 ] as const;
 const DISPLAY_ACRONYMS = new Set(["CPU", "OOM", "RAM"]);
+const LARK_MARKDOWN_ENTITIES: Readonly<Record<string, string>> = {
+  "&": "&#38;",
+  ">": "&#62;",
+  "<": "&#60;",
+  "~": "&sim;",
+  "-": "&#45;",
+  "!": "&#33;",
+  "*": "&#42;",
+  "/": "&#47;",
+  "\\": "&#92;",
+  "[": "&#91;",
+  "]": "&#93;",
+  "(": "&#40;",
+  ")": "&#41;",
+  "#": "&#35;",
+  ":": "&#58;",
+  "+": "&#43;",
+  "\"": "&#34;",
+  "'": "&#39;",
+  "`": "&#96;",
+  "$": "&#36;",
+  "_": "&#95;",
+};
 
 export class InvalidRailwayEventError extends Error {
   constructor(message: string) {
@@ -174,10 +197,9 @@ function formatTimestamp(timestamp: string): string {
 }
 
 function escapeLarkMarkdown(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/([*_~`\[\]<>])/g, "\\$1")
-    .replace(/\s+/g, " ");
+  return [...value.replace(/\s+/g, " ")]
+    .map((character) => LARK_MARKDOWN_ENTITIES[character] ?? character)
+    .join("");
 }
 
 function field(label: string, value: string): Record<string, unknown> {
